@@ -16,4 +16,46 @@ is cheap.
 
 ## The Idea
 
-![Screenshot from 2023-04-06 21-18-48](https://user-images.githubusercontent.com/57960301/230757730-ed3fddcb-6c71-4235-87c2-acef559fe3eb.png)
+```mermaid
+sequenceDiagram
+
+actor C1
+participant S as Server
+participant B as Broadcast
+actor C2
+
+C1 -->> S: GET ws://server:port/proto/v1/ws
+S ->> C1: { ..., connected, client_id }
+
+C2 -->> S: GET ws://server:port/proto/v2/ws
+S->> C2: { ..., connected, client_id }
+
+C1 ->> C1: updates registry to post content
+C2 ->> S: { ..., query, post_title }
+S --) B: { sender: C2, ..., query, post_title }
+B --) C1: repeat broadcast
+B --) C2: repeat broadcast
+
+C2 --) C2: skip broadcast since mesg.sender == self.id
+
+alt if C1 has content matching required query
+    C1 ->> S: { ..., response, { id, posted, title } }
+end
+
+loop collect message until pre-decided timeout
+    S --> S: collect responses for C2
+end
+
+S ->> C2: { ..., response, vec[{ id, posted, title, from }] }
+C2 ->> S: { ..., get, { target, post_id } }
+
+note right of S: assuming target from previous get request is C1
+S ->> C1: repeat get request
+C1 ->> S: { ..., post, { ...post_header, content } }
+S ->> C2: { sender: C1, ..., post, { ...post_header, content } }
+
+C2 --) C2: update registry to contain post as long as it exists
+
+C1 --x S: Disconnected
+C2 --x S: Disconnected
+```
